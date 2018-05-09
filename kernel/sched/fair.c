@@ -6938,7 +6938,7 @@ find_idlest_group_cpu(struct sched_group *group, struct task_struct *p, int this
 		if (sched_idle_cpu(i))
 			return i;
 
-		if (idle_cpu(i)) {
+		if (available_idle_cpu(i)) {
 			struct rq *rq = cpu_rq(i);
 			struct cpuidle_state *idle = idle_get_state(rq);
 			if (idle && idle->exit_latency < min_exit_latency) {
@@ -7077,7 +7077,7 @@ void __update_idle_core(struct rq *rq)
 		if (cpu == core)
 			continue;
 
-		if (!idle_cpu(cpu))
+		if (!available_idle_cpu(cpu))
 			goto unlock;
 	}
 
@@ -7109,7 +7109,7 @@ static int select_idle_core(struct task_struct *p, struct sched_domain *sd, int 
 
 		for_each_cpu(cpu, cpu_smt_mask(core)) {
 			cpumask_clear_cpu(cpu, cpus);
-			if (!idle_cpu(cpu))
+			if (!available_idle_cpu(cpu))
 				idle = false;
 		}
 
@@ -7138,7 +7138,8 @@ static int select_idle_smt(struct task_struct *p, struct sched_domain *sd, int t
 	for_each_cpu(cpu, cpu_smt_mask(target)) {
 		if (!cpumask_test_cpu(cpu, tsk_cpus_allowed(p)))
 			continue;
-		if (idle_cpu(cpu) || sched_idle_cpu(cpu))
+
+		if (available_idle_cpu(cpu) || sched_idle_cpu(cpu))
 			return cpu;
 	}
 
@@ -7190,7 +7191,7 @@ static int select_idle_cpu(struct task_struct *p, struct sched_domain *sd, int t
 	for_each_cpu_wrap(cpu, sched_domain_span(sd), target) {
 		if (!cpumask_test_cpu(cpu, tsk_cpus_allowed(p)))
 			continue;
-		if (idle_cpu(cpu) || sched_idle_cpu(cpu))
+		if (available_idle_cpu(cpu) || sched_idle_cpu(cpu))
 			break;
 	}
 
@@ -7218,7 +7219,7 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 	schedstat_inc(this_rq()->eas_stats.sis_attempts);
 
 	if (!sysctl_sched_cstate_aware) {
-		if (idle_cpu(target) || sched_idle_cpu(target)) {
+		if (available_idle_cpu(target) || sched_idle_cpu(target)) {
 			schedstat_inc(p->se.statistics.nr_wakeups_sis_idle);
 			schedstat_inc(this_rq()->eas_stats.sis_idle);
 			return target;
@@ -7229,7 +7230,7 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 	if (recent_used_cpu != prev &&
 	    recent_used_cpu != target &&
 	    cpus_share_cache(recent_used_cpu, target) &&
-	    (idle_cpu(recent_used_cpu) || sched_idle_cpu(recent_used_cpu)) &&
+	    (available_idle_cpu(recent_used_cpu) || sched_idle_cpu(recent_used_cpu)) &&
 	    cpumask_test_cpu(p->recent_used_cpu, &p->cpus_allowed)) {
 		/*
 		 * Replace recent_used_cpu with prev as it is a potential

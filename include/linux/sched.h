@@ -3101,6 +3101,7 @@ extern int sched_setscheduler_nocheck(struct task_struct *, int,
 				      const struct sched_param *);
 extern int sched_setattr(struct task_struct *,
 			 const struct sched_attr *);
+extern int available_idle_cpu(int cpu);
 extern struct task_struct *idle_task(int cpu);
 /**
  * is_idle_task - is the specified task an idle task?
