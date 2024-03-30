@@ -40,7 +40,7 @@
 #include <asm/uaccess.h>
 #include <linux/async.h>
 #include <asm/atomic.h>
-#include "tspdrv.h"
+#include <uapi/linux/tspdrv.h>
 #if defined(CONFIG_MACH_SDM845_JUDYPN)
 #include <soc/qcom/lge/board_lge.h>
 #endif /* CONFIG_MACH_SDM845_JUDYPN */

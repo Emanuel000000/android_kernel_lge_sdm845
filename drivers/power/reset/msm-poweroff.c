@@ -260,7 +260,7 @@ static int dload_set(const char *val, const struct kernel_param *kp)
 }
 
 #ifdef CONFIG_LGE_HANDLE_PANIC
-int lge_get_download_mode()
+int lge_get_download_mode(void)
 {
 	return download_mode;
 }

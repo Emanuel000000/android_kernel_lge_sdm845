@@ -29,6 +29,8 @@
 #ifndef _TSPDRV_H
 #define _TSPDRV_H
 
+#include <sys/ioctl.h>
+
 /* Constants */
 #define MODULE_NAME                         "tspdrv"
 #define TSPDRV                              "/dev/"MODULE_NAME
@@ -69,7 +71,6 @@
 #define MAX_DEBUG_BUFFER_LENGTH             1024
 
 /* Type definitions */
-#ifdef __KERNEL__
 typedef int8_t		VibeInt8;
 typedef u_int8_t	VibeUInt8;
 typedef int16_t		VibeInt16;
@@ -80,6 +81,7 @@ typedef u_int8_t	VibeBool;
 typedef VibeInt32	VibeStatus;
 
 /* Debug Levels */
+#ifdef __KERNEL__
 #define DBL_TEMP                        0
 #define DBL_FATAL                       0
 #define DBL_ERROR                       1

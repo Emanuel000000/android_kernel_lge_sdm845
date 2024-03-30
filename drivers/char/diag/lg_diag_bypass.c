@@ -30,12 +30,12 @@ static int is_opened = 0;
 struct bypass_driver *lge_bypass_drv = NULL;
 extern int diag_bypass_enable;
 
-int lge_bypass_is_opened()
+int lge_bypass_is_opened(void)
 {
     return is_opened;
 }
 
-int lge_bypass_status()
+int lge_bypass_status(void)
 {
     struct bypass_driver *bypass_drv = NULL;
 
