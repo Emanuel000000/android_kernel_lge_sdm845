@@ -192,12 +192,19 @@ unsigned int sysctl_sched_cfs_bandwidth_slice = 5000UL;
 /*
  * The margin used when comparing utilization with CPU capacity:
  * util * margin < capacity * 1024
+ *
+ * (default: ~20%)
  */
+unsigned int capacity_margin				= 1280;
+
+/*
+ * The margin used when comparing utilization with CPU capacity:
+ * util * margin < capacity * 1024
+ */
+#ifdef CONFIG_SCHED_WALT
 unsigned int sysctl_sched_capacity_margin = 1078; /* ~5% margin */
 unsigned int sysctl_sched_capacity_margin_down = 1205; /* ~15% margin */
 #define capacity_margin sysctl_sched_capacity_margin
-
-#ifdef CONFIG_SCHED_WALT
 unsigned int sysctl_sched_min_task_util_for_boost_colocation;
 #endif
 
@@ -6633,6 +6640,7 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p,
 
 static inline unsigned long boosted_task_util(struct task_struct *p);
 
+#ifdef CONFIG_SCHED_WALT
 static inline bool task_fits_capacity(struct task_struct *p,
 					long capacity,
 					int cpu)
@@ -6646,9 +6654,16 @@ static inline bool task_fits_capacity(struct task_struct *p,
 
 	return capacity * 1024 > boosted_task_util(p) * margin;
 }
+#else
+static inline int task_fits_capacity(struct task_struct *p, long capacity)
+{
+	return capacity * 1024 > boosted_task_util(p) * capacity_margin;
+}
+#endif
 
 static inline bool task_fits_max(struct task_struct *p, int cpu)
 {
+#ifdef CONFIG_SCHED_WALT
 	unsigned long capacity = capacity_orig_of(cpu);
 	unsigned long max_capacity = cpu_rq(cpu)->rd->max_cpu_capacity.val;
 
@@ -6661,6 +6676,9 @@ static inline bool task_fits_max(struct task_struct *p, int cpu)
 		return false;
 
 	return task_fits_capacity(p, capacity, cpu);
+#else
+	return false;
+#endif
 }
 
 static inline bool cpu_check_overutil_condition(int cpu,
@@ -6669,6 +6687,7 @@ static inline bool cpu_check_overutil_condition(int cpu,
 	return (capacity_orig_of(cpu) * 1024) < (util * capacity_margin);
 }
 
+#ifdef CONFIG_SCHED_WALT
 bool __cpu_overutilized(int cpu, int delta)
 {
 	return (capacity_orig_of(cpu) * 1024) <
@@ -6679,6 +6698,12 @@ bool cpu_overutilized(int cpu)
 {
 	return __cpu_overutilized(cpu, 0);
 }
+#else
+bool cpu_overutilized(int cpu)
+{
+	return (capacity_of(cpu) * 1024) < (cpu_util(cpu) * capacity_margin);
+}
+#endif
 
 #ifdef CONFIG_SCHED_TUNE
 
@@ -7396,6 +7421,7 @@ static bool is_packing_eligible(struct task_struct *p, int target_cpu,
 static int start_cpu(struct task_struct *p, bool boosted,
 		     struct cpumask *rtg_target)
 {
+#ifdef CONFIG_SCHED_WALT
 	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
 	int start_cpu = -1;
 
@@ -7419,6 +7445,9 @@ static int start_cpu(struct task_struct *p, bool boosted,
 		start_cpu = rd->max_cap_orig_cpu;
 
 	return walt_start_cpu(start_cpu);
+#else
+	return smp_processor_id();
+#endif
 }
 
 unsigned int sched_smp_overlap_capacity;
@@ -7442,7 +7471,9 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 	long spare_cap, most_spare_cap = 0;
 	int most_spare_cap_cpu = -1;
 	unsigned int active_cpus_count = 0;
+#ifdef CONFIG_SCHED_WALT
 	int isolated_candidate = -1;
+#endif
 	int prev_cpu = task_cpu(p);
 
 	*backup_cpu = -1;
@@ -7488,11 +7519,16 @@ retry:
 			cpumask_clear_cpu(i, &search_cpus);
 
 			trace_sched_cpu_util(i);
+#ifdef CONFIG_SCHED_WALT
 			if (!cpu_online(i) || cpu_isolated(i))
 				continue;
-
+#else
+                        if (!cpu_online(i))
+                                continue;
+#endif
+#ifdef CONFIG_SCHED_WALT
 			isolated_candidate = i;
-
+#endif
 			if (avoid_prev_cpu && i == prev_cpu)
 				continue;
 
@@ -7783,13 +7819,13 @@ retry:
 		/* ensure we use active cpu for active migration */
 		!(p->state == TASK_RUNNING && !idle_cpu(most_spare_cap_cpu)))
 		target_cpu = most_spare_cap_cpu;
-
+#ifdef CONFIG_SCHED_WALT
 	if (cpu_isolated(prev_cpu)) {
 		fbt_env->avoid_prev_cpu = true;
 		if (target_cpu == -1 && isolated_candidate != -1)
 			target_cpu = isolated_candidate;
 	}
-
+#endif
 	/*
 	 * - It is possible for target and backup
 	 *   to select same CPU - if so, drop backup
@@ -7837,20 +7873,28 @@ static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
 
 	return min_cap * 1024 < boosted_task_util(p) * capacity_margin;
 }
-
+#ifdef CONFIG_SCHED_WALT
 static inline int wake_to_idle(struct task_struct *p)
 {
 	return (current->flags & PF_WAKE_UP_IDLE) ||
 		 (p->flags & PF_WAKE_UP_IDLE);
 }
-
+#else
+static inline int wake_to_idle(struct task_struct *p)
+{
+	return 0;
+}
+#endif
 static inline bool
 bias_to_waker_cpu(struct task_struct *p, int cpu, struct cpumask *rtg_target)
 {
 	int rtg_target_cpu = rtg_target ? cpumask_first(rtg_target) : cpu;
 
 	return cpumask_test_cpu(cpu, tsk_cpus_allowed(p)) &&
-	       cpu_active(cpu) && !cpu_isolated(cpu) &&
+	       cpu_active(cpu) &&
+#ifdef CONFIG_SCHED_WALT
+	       !cpu_isolated(cpu) &&
+#endif
 	       capacity_orig_of(cpu) >= capacity_orig_of(rtg_target_cpu) &&
 	       task_fits_max(p, cpu);
 }
@@ -7868,9 +7912,13 @@ bias_to_prev_cpu(struct task_struct *p, struct cpumask *rtg_target)
 	u64 ms = sched_clock();
 #endif
 
+#ifdef CONFIG_SCHED_WALT
 	if (cpu_isolated(prev_cpu) || !idle_cpu(prev_cpu))
 		return false;
-
+#else
+        if (!idle_cpu(prev_cpu))
+                return false;
+#endif
 	if (!ms)
 		return false;
 
@@ -9754,10 +9802,10 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 		trace_sched_cpu_load_lb(cpu_rq(i), idle_cpu(i),
 				     sched_irqload(i),
 				     power_cost(i, 0));
-
+#ifdef CONFIG_SCHED_WALT
 		if (cpu_isolated(i))
 			continue;
-
+#endif
 		if ((env->flags & LBF_NOHZ_STATS) && update_nohz_stats(rq, false))
 			env->flags |= LBF_NOHZ_AGAIN;
 
@@ -10643,10 +10691,13 @@ static int should_we_balance(struct lb_env *env)
 	sg_mask = sched_group_mask(sg);
 	/* Try to find first idle cpu */
 	for_each_cpu_and(cpu, sg_cpus, env->cpus) {
+#ifdef CONFIG_SCHED_WALT
 		if (!cpumask_test_cpu(cpu, sg_mask) || !idle_cpu(cpu) ||
 		    cpu_isolated(cpu))
+#else
+                if (!cpumask_test_cpu(cpu, sg_mask) || !idle_cpu(cpu))
 			continue;
-
+#endif
 		balance_cpu = cpu;
 		break;
 	}
@@ -10896,8 +10947,12 @@ no_move:
 			 * ->active_balance_work.  Once set, it's cleared
 			 * only after active load balance is finished.
 			 */
+#ifdef CONFIG_SCHED_WALT
 			if (!busiest->active_balance &&
 			    !cpu_isolated(cpu_of(busiest))) {
+#else
+                        if (!busiest->active_balance) {
+#endif
 				busiest->active_balance = 1;
 				busiest->push_cpu = this_cpu;
 				active_balance = 1;
@@ -11123,13 +11178,13 @@ out_unlock:
 	busiest_rq->active_balance = 0;
 #ifdef CONFIG_SCHED_WALT
 	push_task = busiest_rq->push_task;
+#endif
 	target_cpu = busiest_rq->push_cpu;
 	clear_reserved(target_cpu);
-
+#ifdef CONFIG_SCHED_WALT
 	if (push_task)
 		busiest_rq->push_task = NULL;
 #endif
-
 	rq_unlock(busiest_rq, &rf);
 #ifdef CONFIG_SCHED_WALT
 	if (push_task) {
@@ -11145,7 +11200,6 @@ out_unlock:
 
 	return 0;
 }
-
 
 static DEFINE_SPINLOCK(balancing);
 
@@ -11492,9 +11546,13 @@ void nohz_balance_enter_idle(int cpu)
 		goto out;
 
 	/* If we're a completely isolated CPU, we don't play: */
+#ifdef CONFIG_SCHED_WALT
         if (on_null_domain(rq) || cpu_isolated(cpu))
 		return;
-
+#else
+        if (on_null_domain(rq))
+                return;
+#endif
 	rq->nohz_tick_stopped = 1;
 
 	cpumask_set_cpu(cpu, nohz.idle_cpus_mask);
@@ -11708,10 +11766,10 @@ static int idle_balance(struct rq *this_rq, struct rq_flags *rf)
 	int pulled_task = 0;
 	u64 curr_cost = 0;
         u64 avg_idle = this_rq->avg_idle;
-
+#ifdef CONFIG_SCHED_WALT
 	if (cpu_isolated(this_cpu))
 		return 0;
-
+#endif
 	/*
 	 * We must set idle_stamp _before_ calling idle_balance(), such that we
 	 * measure the duration of idle_balance() as idle time.
@@ -11826,7 +11884,7 @@ static __latent_entropy void run_rebalance_domains(struct softirq_action *h)
 	struct rq *this_rq = this_rq();
 	enum cpu_idle_type idle = this_rq->idle_balance ?
 						CPU_IDLE : CPU_NOT_IDLE;
-
+#ifdef CONFIG_SCHED_WALT
 	/*
 	 * Since core isolation doesn't update nohz.idle_cpus_mask, there
 	 * is a possibility this nohz kicked cpu could be isolated. Hence
@@ -11834,6 +11892,7 @@ static __latent_entropy void run_rebalance_domains(struct softirq_action *h)
 	 */
 	if (cpu_isolated(this_rq->cpu))
 		return;
+#endif
 	/*
 	 * If this cpu has a pending nohz_balance_kick, then do the
 	 * balancing on behalf of the other idle cpus whose ticks are
@@ -11860,9 +11919,13 @@ void trigger_load_balance(struct rq *rq)
 	/* Don't need to rebalance while attached to NULL domain or
 	 * cpu is isolated.
 	 */
+#ifdef CONFIG_SCHED_WALT
 	if (unlikely(on_null_domain(rq)) || cpu_isolated(cpu_of(rq)))
 		return;
-
+#else
+        if (unlikely(on_null_domain(rq)))
+                return;
+#endif
 	if (time_after_eq(jiffies, rq->next_balance))
 		raise_softirq(SCHED_SOFTIRQ);
 	nohz_balancer_kick(rq);

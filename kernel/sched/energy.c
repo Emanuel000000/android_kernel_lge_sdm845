@@ -291,6 +291,7 @@ static int sched_energy_probe(struct platform_device *pdev)
 
 	for_each_possible_cpu(cpu) {
 		struct rq *rq = cpu_rq(cpu);
+#ifdef CONFIG_SCHED_WALT
 		int max_cpu = READ_ONCE(rq->rd->max_cap_orig_cpu);
 		int min_cpu = READ_ONCE(rq->rd->min_cap_orig_cpu);
 
@@ -301,6 +302,7 @@ static int sched_energy_probe(struct platform_device *pdev)
 		if ((min_cpu < 0) || rq->cpu_capacity_orig <
 		    cpu_rq(min_cpu)->cpu_capacity_orig)
 			WRITE_ONCE(rq->rd->min_cap_orig_cpu, cpu);
+#endif
 	}
 
 	kfree(max_frequencies);

@@ -1718,6 +1718,7 @@ static struct find_first_cpu_bit_env first_cpu_bit_env = {
 
 static DEFINE_PER_CPU(cpumask_var_t, local_cpu_mask);
 
+#ifdef CONFIG_SCHED_WALT
 static int find_lowest_rq(struct task_struct *task)
 {
 	struct sched_domain *sd;
@@ -1943,7 +1944,12 @@ noea:
 		return cpu;
 	return -1;
 }
-
+#else
+static int find_lowest_rq(struct task_struct *task)
+{
+	return -1;
+}
+#endif
 /* Will lock the rq it finds */
 static struct rq *find_lock_lowest_rq(struct task_struct *task, struct rq *rq)
 {

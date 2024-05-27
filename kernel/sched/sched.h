@@ -816,8 +816,10 @@ struct root_domain {
 	/* Maximum cpu capacity in the system. */
 	struct max_cpu_capacity max_cpu_capacity;
 
+#ifdef CONFIG_SCHED_WALT
 	/* First cpu with maximum and minimum original capacity */
 	int max_cap_orig_cpu, min_cap_orig_cpu;
+#endif
 };
 
 extern struct root_domain def_root_domain;
@@ -3201,18 +3203,8 @@ static inline int sched_boost(void)
 }
 
 static inline bool hmp_capable(void) { return false; }
+static inline bool is_min_capacity_cpu(int cpu) { return true; }
 static inline bool is_max_capacity_cpu(int cpu) { return true; }
-static inline bool is_min_capacity_cpu(int cpu)
-{
-#ifdef CONFIG_SMP
-	int min_cpu = cpu_rq(cpu)->rd->min_cap_orig_cpu;
-
-	return unlikely(min_cpu == -1) ||
-		capacity_orig_of(cpu) == capacity_orig_of(min_cpu);
-#else
-	return true;
-#endif
-}
 
 static inline int
 preferred_cluster(struct sched_cluster *cluster, struct task_struct *p)
