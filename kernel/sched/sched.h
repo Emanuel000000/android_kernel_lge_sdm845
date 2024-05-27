@@ -33,6 +33,7 @@ struct cpuidle_state;
 extern __read_mostly bool sched_predl;
 extern unsigned int sched_smp_overlap_capacity;
 
+unsigned long apply_dvfs_headroom(unsigned long util, int cpu, bool tapered);
 #ifdef CONFIG_SCHED_WALT
 extern unsigned int sched_ravg_window;
 extern unsigned int walt_cpu_util_freq_divisor;
