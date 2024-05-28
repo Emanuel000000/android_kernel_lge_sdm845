@@ -65,6 +65,7 @@ struct sugov_cpu {
 
 	struct sched_walt_cpu_load walt_load;
 
+	unsigned long		util;
 	unsigned long		bw_dl;
 	unsigned long		min;
 	unsigned long		max;
@@ -376,17 +377,16 @@ static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 	return stune_util(sg_cpu->cpu, 0, &sg_cpu->walt_load);
 }
 #else
-static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
+static void sugov_get_util(struct sugov_cpu *sg_cpu)
 {
 	struct rq *rq = cpu_rq(sg_cpu->cpu);
-	unsigned long util_cfs = cpu_util_cfs(rq);
 	unsigned long max = arch_scale_cpu_capacity(NULL, sg_cpu->cpu);
 
 	sg_cpu->max = max;
 	sg_cpu->bw_dl = cpu_bw_dl(rq);
 
-	return schedutil_cpu_util(sg_cpu->cpu, util_cfs, max,
-				  FREQUENCY_UTIL, NULL);
+	sg_cpu->util = schedutil_cpu_util(sg_cpu->cpu, cpu_util_cfs(rq), max,
+					  FREQUENCY_UTIL, NULL);
 }
 #endif
 
@@ -418,9 +418,8 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 {
 	struct sugov_cpu *sg_cpu = container_of(hook, struct sugov_cpu, update_util);
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
-	unsigned long util, max;
-	unsigned int next_f;
 	bool busy;
+	unsigned int next_f;
 
 	sg_cpu->last_update = time;
 
@@ -433,10 +432,9 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	busy = use_pelt() && !sg_policy->need_freq_update &&
 		sugov_cpu_is_busy(sg_cpu);
 
-	util = sugov_get_util(sg_cpu);
-	max = sg_cpu->max;
+	sugov_get_util(sg_cpu);
 
-	next_f = get_next_freq(sg_policy, util, max);
+	next_f = get_next_freq(sg_policy, sg_cpu->util, sg_cpu->max);
 	/*
 	 * Do not reduce the frequency if the CPU has not been idle
 	 * recently, as the reduction is likely to be premature then.
@@ -473,7 +471,8 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 		struct sugov_cpu *j_sg_cpu = &per_cpu(sugov_cpu, j);
 		unsigned long j_util, j_max;
 
-		j_util = sugov_get_util(j_sg_cpu);
+		sugov_get_util(j_sg_cpu);
+		j_util = j_sg_cpu->util;
 		j_max = j_sg_cpu->max;
 
 		if (j_util * max > j_max * util) {
