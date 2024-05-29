@@ -1571,7 +1571,7 @@ s64 __maybe_unused steal = 0, irq_delta = 0;
 
 	rq->clock_task += delta;
 
-#if CONFIG_HAVE_SCHED_AVG_IRQ
+#ifdef CONFIG_HAVE_SCHED_AVG_IRQ
 	if ((irq_delta + steal) && sched_feat(NONTASK_CAPACITY))
 		update_irq_load_avg(rq, irq_delta + steal);
 #endif
